@@ -17,4 +17,4 @@ ENV PORT=8080
 WORKDIR /app/backend
 
 # Command to run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "wsgi:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--worker-class", "uvicorn.workers.UvicornWorker", "wsgi:app"]
