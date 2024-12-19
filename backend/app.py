@@ -17,7 +17,7 @@ from passlib.context import CryptContext
 import httpx
 import json
 from urllib.parse import urlencode
-from openai import AsyncOpenAI
+from openai import OpenAI
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -91,7 +91,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-client = AsyncOpenAI(api_key=api_key)
+client = OpenAI(api_key=api_key)
 
 app = FastAPI()
 
@@ -445,10 +445,10 @@ async def get_user_by_email(email: str):
         return None
 
 # Keep your existing models
-async def analyze_input(text: str) -> InputAnalysis:
+def analyze_input(text: str) -> InputAnalysis:
     try:
         logger.info(f"Generating input analysis for text: {text[:100]}...")
-        response = await client.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
@@ -479,7 +479,7 @@ async def analyze_input(text: str) -> InputAnalysis:
         logger.error(f"Error generating input analysis: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-async def get_verse_application(analysis: InputAnalysis) -> VerseApplication:
+def get_verse_application(analysis: InputAnalysis) -> VerseApplication:
     try:
         logger.info(f"Generating verse application for analysis: {analysis}...")
         themes_str = ", ".join(analysis.potential_themes)
@@ -487,7 +487,7 @@ async def get_verse_application(analysis: InputAnalysis) -> VerseApplication:
         
         # Get a single most relevant verse
         logger.info("Requesting most relevant verse...")
-        verse_response = await client.chat.completions.create(
+        verse_response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
@@ -508,7 +508,7 @@ async def get_verse_application(analysis: InputAnalysis) -> VerseApplication:
         
         # Get specific application for the verse
         logger.info("Generating concise application summary...")
-        application_response = await client.chat.completions.create(
+        application_response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
@@ -549,11 +549,11 @@ async def get_verse(request: QuestionRequest):
         logger.info(f"Received question: {request.question}")
         
         # Analyze the input
-        analysis = await analyze_input(request.question)
+        analysis = analyze_input(request.question)
         logger.info(f"Analysis completed: {analysis}")
         
         # Get verse application
-        result = await get_verse_application(analysis)
+        result = get_verse_application(analysis)
         logger.info(f"Verse application completed: {result}")
         
         # Store the chat in Firestore
@@ -588,10 +588,10 @@ async def analyze_text(request: TextRequest):
         if not request.text.strip():
             raise HTTPException(status_code=400, detail="Text cannot be empty")
             
-        analysis = await analyze_input(request.text)
+        analysis = analyze_input(request.text)
         logger.info("Successfully generated input analysis")
         
-        verse_app = await get_verse_application(analysis)
+        verse_app = get_verse_application(analysis)
         logger.info("Successfully generated verse application")
         
         # Convert to JSON-safe format
