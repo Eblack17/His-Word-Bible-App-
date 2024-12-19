@@ -1,9 +1,9 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { Provider as PaperProvider, MD3DarkTheme } from 'react-native-paper';
 import { SessionContextProvider } from '@supabase/auth-helpers-react';
 import { supabase } from './lib/supabase';
-import { Provider as PaperProvider, MD3DarkTheme } from 'react-native-paper';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import SignUp from './pages/SignUp';
@@ -33,8 +33,8 @@ if (Platform.OS === 'web') {
 
 export default function App() {
   return (
-    <NavigationContainer>
-      <SessionContextProvider supabaseClient={supabase}>
+    <SessionContextProvider supabaseClient={supabase}>
+      <NavigationContainer>
         <PaperProvider theme={theme}>
           <Stack.Navigator 
             initialRouteName="Login"
@@ -74,7 +74,7 @@ export default function App() {
             />
           </Stack.Navigator>
         </PaperProvider>
-      </SessionContextProvider>
-    </NavigationContainer>
+      </NavigationContainer>
+    </SessionContextProvider>
   );
 }

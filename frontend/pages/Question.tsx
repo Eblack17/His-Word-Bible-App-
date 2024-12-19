@@ -38,33 +38,40 @@ export default function Question() {
         return;
       }
 
-      const response = await fetch(`${BACKEND_URL}/generate`, {
+      const apiUrl = `${BACKEND_URL}/generate`;
+      console.log('Making API request to:', apiUrl);
+      
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Origin': window.location.origin,
         },
-        body: JSON.stringify({ prompt: questionText.trim() }),
+        mode: 'cors',
+        credentials: 'include',
+        body: JSON.stringify({ 
+          prompt: questionText.trim(),
+          userId: user.id 
+        }),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to get response');
+        const errorText = await response.text();
+        console.error('API Error Response:', response.status, errorText);
+        throw new Error(errorText || 'Failed to get response');
       }
 
-      const result = await response.json();
-      console.log('API Response:', result);
+      const responseData = await response.json();
+      console.log('API Response:', responseData);
 
+      // Save to Supabase
       const { error: saveError } = await supabase
         .from('chats')
         .insert({
           user_id: user.id,
           question: questionText.trim(),
-          response: {
-            verse: result.verse,
-            reference: result.reference,
-            relevance: result.relevance,
-            explanation: result.explanation
-          },
+          response: responseData,
           created_at: new Date().toISOString(),
           is_archived: false
         });
@@ -75,15 +82,11 @@ export default function Question() {
 
       navigation.navigate('Response', {
         question: questionText.trim(),
-        verse: result.verse,
-        reference: result.reference,
-        relevance: result.relevance,
-        explanation: result.explanation
+        response: responseData
       });
-
-    } catch (error) {
-      console.error('Error:', error);
-      setError('Failed to get response. Please try again.');
+    } catch (err: any) {
+      console.error('Error details:', err);
+      setError(err.message || 'Failed to get response. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -91,84 +94,53 @@ export default function Question() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <IconButton
-            icon="arrow-left"
-            size={24}
-            onPress={() => navigation.goBack()}
-            iconColor="#FFD9D0"
-          />
-        </View>
-
-        <ScrollView style={styles.scrollContent}>
-          <Text style={styles.mainTitle}>Where shall we begin as we tap into God's eternal wisdom?</Text>
-          <View style={styles.examplesList}>
-            {exampleQuestions.map((q, index) => (
-              <TouchableOpacity
-                key={index}
-                style={[
-                  styles.exampleButton,
-                  loading && styles.disabledButton
-                ]}
-                onPress={() => handleExampleSelect(q)}
-                disabled={loading}
-              >
-                <Text style={styles.exampleText}>{q}</Text>
-                <IconButton
-                  icon="chevron-right"
-                  size={24}
-                  iconColor="rgba(255, 255, 255, 0.5)"
-                  style={styles.chevronIcon}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {error && (
-            <View style={styles.errorContainer}>
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          )}
-        </ScrollView>
-
-        <View style={styles.bottomSection}>
-          <View style={styles.inputContainer}>
-            <TextInput
-              style={styles.input}
-              placeholder="Type your question here..."
-              value={question}
-              onChangeText={setQuestion}
-              multiline
-              mode="outlined"
-              disabled={loading}
-              outlineColor="#FFD9D0"
-              activeOutlineColor="#FFD9D0"
-              textColor="#FFFFFF"
-              placeholderTextColor="rgba(255, 255, 255, 0.5)"
-              theme={{
-                colors: {
-                  primary: '#FFD9D0',
-                  text: '#FFFFFF',
-                  placeholder: 'rgba(255, 255, 255, 0.5)',
-                  background: 'transparent'
-                }
-              }}
-            />
-            <Button
-              mode="outlined"
-              onPress={() => handleSubmit()}
-              style={styles.button}
-              icon="send"
-              loading={loading}
-              disabled={loading || !question.trim()}
-              textColor="#FFD9D0"
-            >
-              {loading ? 'Getting Answer...' : 'Get Answer'}
-            </Button>
-          </View>
-        </View>
+      <View style={styles.header}>
+        <IconButton
+          icon="arrow-left"
+          iconColor="#FFD9D0"
+          size={24}
+          onPress={() => navigation.goBack()}
+        />
+        <Text style={styles.headerText}>Ask a Question</Text>
       </View>
+
+      <ScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
+        <Text style={styles.label}>Your Question</Text>
+        <TextInput
+          value={question}
+          onChangeText={setQuestion}
+          placeholder="Type your question here..."
+          multiline
+          numberOfLines={4}
+          style={styles.input}
+          mode="outlined"
+        />
+
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+
+        <Button
+          mode="contained"
+          onPress={() => handleSubmit()}
+          style={styles.submitButton}
+          loading={loading}
+          disabled={loading || !question.trim()}
+        >
+          {loading ? 'Getting Response...' : 'Get Response'}
+        </Button>
+
+        <View style={styles.examplesSection}>
+          <Text style={styles.examplesTitle}>Example Questions</Text>
+          {exampleQuestions.map((q, index) => (
+            <TouchableOpacity
+              key={index}
+              style={styles.exampleItem}
+              onPress={() => handleExampleSelect(q)}
+            >
+              <Text style={styles.exampleText}>{q}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -178,87 +150,58 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  scrollContent: {
-    flex: 1,
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    padding: 16,
   },
-  mainTitle: {
-    fontFamily: 'SF Pro Display',
-    fontSize: 24,
+  headerText: {
+    fontSize: 20,
     color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 32,
-    paddingHorizontal: 20,
-    fontWeight: '400',
+    marginLeft: 8,
+    fontWeight: 'bold',
   },
-  examplesList: {
-    gap: 16,
-    paddingHorizontal: 4,
-    paddingTop: 8,
+  content: {
+    flex: 1,
   },
-  exampleButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 16,
-    padding: 24,
-    paddingVertical: 28,
-    flexDirection: 'row',
-    alignItems: 'center',
+  contentContainer: {
+    padding: 16,
   },
-  exampleText: {
+  label: {
     fontSize: 16,
     color: '#FFFFFF',
-    lineHeight: 24,
-    flex: 1,
-    paddingRight: 16,
-  },
-  chevronIcon: {
-    margin: 0,
-    padding: 0,
-  },
-  bottomSection: {
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
-    paddingTop: 20,
-    marginTop: 'auto',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderTopLeftRadius: 25,
-    borderTopRightRadius: 25,
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
-  },
-  inputContainer: {
-    gap: 16,
+    marginBottom: 8,
   },
   input: {
-    backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    fontSize: 16,
-    minHeight: 100,
-    borderRadius: 25,
-  },
-  button: {
-    borderColor: '#FFD9D0',
-    borderRadius: 25,
-  },
-  errorContainer: {
-    backgroundColor: 'rgba(255, 0, 0, 0.1)',
-    borderRadius: 25,
-    padding: 16,
-    marginBottom: 20,
+    backgroundColor: '#1A1A1A',
+    marginBottom: 16,
   },
   errorText: {
     color: '#FF6B6B',
-    fontSize: 14,
+    marginBottom: 16,
+    textAlign: 'center',
   },
-  disabledButton: {
-    opacity: 0.5,
+  submitButton: {
+    marginBottom: 24,
+    backgroundColor: '#FFD9D0',
+  },
+  examplesSection: {
+    marginTop: 16,
+  },
+  examplesTitle: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    marginBottom: 16,
+    fontWeight: 'bold',
+  },
+  exampleItem: {
+    backgroundColor: '#1A1A1A',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  exampleText: {
+    color: '#FFFFFF',
+    fontSize: 14,
   },
 });
