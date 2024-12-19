@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { supabase } from '../lib/supabase';
 import { NavigationProps } from '../navigation.types';
+import { BACKEND_URL } from '../config';
 
 const exampleQuestions = [
   "I'm praying for healing for my mother who is battling cancer. Can you share a comforting verse and some guidance?",
@@ -37,12 +38,12 @@ export default function Question() {
         return;
       }
 
-      const response = await fetch('http://localhost:5000/api/get_verse', {
+      const response = await fetch(`${BACKEND_URL}/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ question: questionText.trim() }),
+        body: JSON.stringify({ prompt: questionText.trim() }),
       });
 
       if (!response.ok) {
