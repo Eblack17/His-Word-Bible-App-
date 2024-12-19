@@ -39,6 +39,12 @@ if not api_key:
     logger.error("OpenAI API key not found in environment variables")
     raise ValueError("OpenAI API key not found")
 
+# Create OpenAI client without proxy settings
+client = OpenAI(
+    api_key=api_key,
+    base_url="https://api.openai.com/v1"
+)
+
 # Function to format private key
 def format_private_key(private_key):
     if not private_key:
@@ -90,8 +96,6 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-client = OpenAI(api_key=api_key)
 
 app = FastAPI()
 
