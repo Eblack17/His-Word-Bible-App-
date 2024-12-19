@@ -39,9 +39,24 @@ if not api_key:
     logger.error("OpenAI API key not found in environment variables")
     raise ValueError("OpenAI API key not found")
 
-# Initialize Firebase Admin
-cred = credentials.Certificate('firebase-credentials.json')
-firebase_admin.initialize_app(cred)
+# Initialize Firebase from environment variables
+firebase_credentials = {
+    "type": os.getenv("FIREBASE_TYPE"),
+    "project_id": os.getenv("FIREBASE_PROJECT_ID"),
+    "private_key_id": os.getenv("FIREBASE_PRIVATE_KEY_ID"),
+    "private_key": os.getenv("FIREBASE_PRIVATE_KEY").replace("\\n", "\n") if os.getenv("FIREBASE_PRIVATE_KEY") else None,
+    "client_email": os.getenv("FIREBASE_CLIENT_EMAIL"),
+    "client_id": os.getenv("FIREBASE_CLIENT_ID"),
+    "auth_uri": os.getenv("FIREBASE_AUTH_URI"),
+    "token_uri": os.getenv("FIREBASE_TOKEN_URI"),
+    "auth_provider_x509_cert_url": os.getenv("FIREBASE_AUTH_PROVIDER_X509_CERT_URL"),
+    "client_x509_cert_url": os.getenv("FIREBASE_CLIENT_CERT_URL")
+}
+
+if not firebase_admin._apps:
+    cred = credentials.Certificate(firebase_credentials)
+    firebase_admin.initialize_app(cred)
+
 db = firestore.client()
 
 # JWT Configuration
