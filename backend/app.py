@@ -17,7 +17,7 @@ from passlib.context import CryptContext
 import httpx
 import json
 from urllib.parse import urlencode
-from openai import OpenAI
+import openai
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -40,10 +40,7 @@ if not api_key:
     raise ValueError("OpenAI API key not found")
 
 # Create OpenAI client without proxy settings
-client = OpenAI(
-    api_key=api_key,
-    base_url="https://api.openai.com/v1"
-)
+openai.api_key = api_key
 
 # Function to format private key
 def format_private_key(private_key):
@@ -452,7 +449,7 @@ async def get_user_by_email(email: str):
 def analyze_input(text: str) -> InputAnalysis:
     try:
         logger.info(f"Generating input analysis for text: {text[:100]}...")
-        response = client.chat.completions.create(
+        response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
@@ -468,7 +465,7 @@ def analyze_input(text: str) -> InputAnalysis:
         
         # Parse the AI response
         import json
-        analysis_data = json.loads(response.choices[0].message.content)
+        analysis_data = json.loads(response.choices[0].message['content'])
         logger.info("Successfully generated input analysis")
         return InputAnalysis(
             keywords=analysis_data["keywords"],
@@ -491,7 +488,7 @@ def get_verse_application(analysis: InputAnalysis) -> VerseApplication:
         
         # Get a single most relevant verse
         logger.info("Requesting most relevant verse...")
-        verse_response = client.chat.completions.create(
+        verse_response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
@@ -506,13 +503,13 @@ def get_verse_application(analysis: InputAnalysis) -> VerseApplication:
         )
         
         import json
-        verse_data = json.loads(verse_response.choices[0].message.content)
+        verse_data = json.loads(verse_response.choices[0].message['content'])
         selected_verse = verse_data["verse"]
         logger.info(f"Selected verse: {selected_verse['reference']} (Relevance: {selected_verse['relevance_score']}/10)")
         
         # Get specific application for the verse
         logger.info("Generating concise application summary...")
-        application_response = client.chat.completions.create(
+        application_response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
                 {
@@ -526,7 +523,7 @@ def get_verse_application(analysis: InputAnalysis) -> VerseApplication:
             ]
         )
         
-        application_data = json.loads(application_response.choices[0].message.content)
+        application_data = json.loads(application_response.choices[0].message['content'])
         logger.info(f"Generated application for verse {selected_verse['reference']}")
         
         verse_app = VerseApplication(
