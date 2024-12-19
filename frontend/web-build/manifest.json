@@ -1,0 +1,7 @@
+{
+  "display": "standalone",
+  "lang": "en",
+  "name": "bible-verse-app",
+  "short_name": "bible-verse-app",
+  "start_url": "/?utm_source=web_app_manifest"
+}

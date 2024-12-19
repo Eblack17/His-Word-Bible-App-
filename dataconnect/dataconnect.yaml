@@ -1,0 +1,12 @@
+specVersion: "v1beta"
+serviceId: "bible_verse_app"
+location: "us-central1"
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "fdcdb"
+      cloudSql:
+        instanceId: "bible_verse_app-fdc"
+      # schemaValidation: "COMPATIBLE"
+connectorDirs: ["./connector"]
