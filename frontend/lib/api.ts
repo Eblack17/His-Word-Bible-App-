@@ -1,6 +1,4 @@
-import { auth, db } from './firebase';
-import { collection, query, where, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
-import { signOut as firebaseSignOut } from 'firebase/auth';
+import { supabase } from './supabase';
 
 export interface ChatResponse {
   verse: string;
@@ -20,71 +18,86 @@ export interface ChatItem {
 export const api = {
   // Chat operations
   async loadChats(): Promise<{ chats: ChatItem[], archivedChats: ChatItem[] }> {
-    const user = auth.currentUser;
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       throw new Error('No user found');
     }
 
-    const chatsRef = collection(db, 'chats');
-    const q = query(
-      chatsRef,
-      where('user_id', '==', user.uid),
-      orderBy('created_at', 'desc')
-    );
+    const { data: allChats, error } = await supabase
+      .from('chats')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false });
 
-    const querySnapshot = await getDocs(q);
-    const processedChats = querySnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-      response: typeof doc.data().response === 'string'
-        ? JSON.parse(doc.data().response)
-        : doc.data().response
-    })) as ChatItem[];
+    if (error) {
+      console.error('Error loading chats:', error);
+      throw error;
+    }
 
-    return {
-      chats: processedChats.filter(chat => !chat.is_archived),
-      archivedChats: processedChats.filter(chat => chat.is_archived),
-    };
+    const chats = allChats.filter(chat => !chat.is_archived);
+    const archivedChats = allChats.filter(chat => chat.is_archived);
+
+    return { chats, archivedChats };
   },
 
   async archiveChat(chatId: string, currentlyArchived: boolean): Promise<void> {
-    const chatRef = doc(db, 'chats', chatId);
-    await updateDoc(chatRef, {
-      is_archived: !currentlyArchived
-    });
+    const { error } = await supabase
+      .from('chats')
+      .update({ is_archived: !currentlyArchived })
+      .eq('id', chatId);
+
+    if (error) {
+      console.error('Error archiving chat:', error);
+      throw error;
+    }
   },
 
   async deleteChat(chatId: string): Promise<void> {
-    const chatRef = doc(db, 'chats', chatId);
-    await deleteDoc(chatRef);
+    const { error } = await supabase
+      .from('chats')
+      .delete()
+      .eq('id', chatId);
+
+    if (error) {
+      console.error('Error deleting chat:', error);
+      throw error;
+    }
   },
 
   async createChat(question: string, response: ChatResponse): Promise<ChatItem> {
-    const user = auth.currentUser;
+    const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       throw new Error('No user found');
     }
 
-    const chatsRef = collection(db, 'chats');
-    const chatData = {
-      user_id: user.uid,
-      question,
-      response: JSON.stringify(response),
-      created_at: new Date().toISOString(),
-      is_archived: false
-    };
+    const { data, error } = await supabase
+      .from('chats')
+      .insert([
+        {
+          user_id: user.id,
+          question,
+          response,
+          created_at: new Date().toISOString(),
+          is_archived: false
+        }
+      ])
+      .select()
+      .single();
 
-    const docRef = await addDoc(chatsRef, chatData);
-    
-    return {
-      id: docRef.id,
-      ...chatData,
-      response
-    };
+    if (error) {
+      console.error('Error creating chat:', error);
+      throw error;
+    }
+
+    return data;
   },
 
   // Auth operations
   async signOut(): Promise<void> {
-    await firebaseSignOut(auth);
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Error signing out:', error);
+      throw error;
+    }
   }
 };

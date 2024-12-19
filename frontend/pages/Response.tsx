@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, ScrollView } from 'react-native';
 import { Text, IconButton, Button, Snackbar } from 'react-native-paper';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -19,13 +19,50 @@ type ResponseParams = {
 export default function Response() {
   const navigation = useNavigation<NavigationProps>();
   const route = useRoute();
-  const params = route.params as ResponseParams;
+  const [params, setParams] = useState<ResponseParams | null>(null);
   const [isArchiving, setIsArchiving] = useState(false);
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [snackbarType, setSnackbarType] = useState<'success' | 'error'>('success');
 
+  useEffect(() => {
+    console.log('Route params received:', route.params); // Debug log
+    const routeParams = route.params as ResponseParams;
+    
+    if (!routeParams) {
+      console.error('No route params received');
+      return;
+    }
+
+    if (!routeParams.question) {
+      console.error('No question in route params');
+      return;
+    }
+
+    if (!routeParams.response) {
+      console.error('No response in route params');
+      return;
+    }
+
+    // Validate response fields
+    const { verse, reference, relevance, explanation } = routeParams.response;
+    if (!verse || !reference || !relevance || !explanation) {
+      console.error('Missing required fields in response:', routeParams.response);
+      return;
+    }
+
+    console.log('Setting params:', routeParams); // Debug log
+    setParams(routeParams);
+  }, [route.params]);
+
+  // Debug log for params changes
+  useEffect(() => {
+    console.log('Current params:', params);
+  }, [params]);
+
   const handleArchive = async () => {
+    if (!params) return;
+
     try {
       setIsArchiving(true);
       
@@ -54,8 +91,11 @@ export default function Response() {
     }
   };
 
-  if (!params) {
-    console.error('No params provided to Response page');
+  // Add immediate debug render
+  console.log('Rendering Response component with params:', params);
+
+  if (!params || !params.response) {
+    console.error('No params or response provided to Response page');
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
@@ -67,7 +107,10 @@ export default function Response() {
           />
           <Text style={styles.headerText}>Error</Text>
         </View>
-        <Text style={styles.errorText}>No response data available</Text>
+        <View style={styles.content}>
+          <Text style={styles.errorText}>No response data available</Text>
+          <Text style={styles.debugText}>Route params: {JSON.stringify(route.params, null, 2)}</Text>
+        </View>
       </SafeAreaView>
     );
   }
@@ -92,50 +135,39 @@ export default function Response() {
 
         <View style={styles.section}>
           <Text style={styles.label}>Bible Verse</Text>
-          <Text style={styles.text}>{params.response.verse}</Text>
-          <Text style={styles.text}>{params.response.reference}</Text>
+          <Text style={styles.verseText}>{params.response.verse}</Text>
+          <Text style={styles.referenceText}>{params.response.reference}</Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.label}>Relevance</Text>
+          <Text style={styles.label}>Why This Verse?</Text>
           <Text style={styles.text}>{params.response.relevance}</Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.label}>Application</Text>
+          <Text style={styles.label}>Guidance & Application</Text>
           <Text style={styles.text}>{params.response.explanation}</Text>
         </View>
-      </ScrollView>
 
-      <View style={styles.bottomButtons}>
         <Button
-          mode="outlined"
-          onPress={() => navigation.navigate('Home')}
-          style={styles.button}
-          icon="home"
-          textColor="#FFD9D0"
-        >
-          Home
-        </Button>
-        <Button
-          mode="outlined"
+          mode="contained"
           onPress={handleArchive}
-          style={styles.button}
-          icon="archive"
           loading={isArchiving}
           disabled={isArchiving}
-          textColor="#FFD9D0"
+          style={styles.archiveButton}
+          textColor="#000000"
         >
-          Archive
+          {isArchiving ? 'Saving...' : 'Save Response'}
         </Button>
-      </View>
+      </ScrollView>
+
       <Snackbar
         visible={snackbarVisible}
         onDismiss={() => setSnackbarVisible(false)}
-        duration={2000}
+        duration={3000}
         style={[
           styles.snackbar,
-          snackbarType === 'success' ? styles.successSnackbar : styles.errorSnackbar
+          { backgroundColor: snackbarType === 'success' ? '#4CAF50' : '#F44336' }
         ]}
       >
         {snackbarMessage}
@@ -153,12 +185,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
+    backgroundColor: '#1A1A1A',
   },
   headerText: {
+    flex: 1,
     fontSize: 20,
-    color: '#FFFFFF',
-    marginLeft: 8,
     fontWeight: 'bold',
+    color: '#FFD9D0',
+    textAlign: 'center',
+    marginRight: 48,
   },
   content: {
     flex: 1,
@@ -170,46 +205,48 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   label: {
-    fontSize: 16,
+    fontSize: 18,
+    fontWeight: 'bold',
     color: '#FFD9D0',
     marginBottom: 8,
-    fontWeight: 'bold',
   },
   text: {
     fontSize: 16,
     color: '#FFFFFF',
     lineHeight: 24,
   },
-  bottomButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
-    marginTop: 20,
-    paddingTop: 20,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.1)',
+  verseText: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontStyle: 'italic',
+    lineHeight: 26,
+    marginBottom: 8,
   },
-  button: {
-    flex: 1,
-    borderColor: '#FFD9D0',
-    borderRadius: 25,
+  referenceText: {
+    fontSize: 16,
+    color: '#FFD9D0',
+    fontWeight: 'bold',
+  },
+  archiveButton: {
+    marginTop: 24,
+    backgroundColor: '#FFD9D0',
   },
   errorText: {
-    color: '#FF6B6B',
     fontSize: 16,
+    color: '#F44336',
     textAlign: 'center',
-    marginTop: 20,
+    marginTop: 24,
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#888888',
+    padding: 16,
+    fontFamily: 'monospace',
   },
   snackbar: {
     position: 'absolute',
     bottom: 0,
-    margin: 16,
-    borderRadius: 8,
-  },
-  successSnackbar: {
-    backgroundColor: '#4CAF50',
-  },
-  errorSnackbar: {
-    backgroundColor: '#F44336',
+    left: 0,
+    right: 0,
   },
 });

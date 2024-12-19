@@ -6,23 +6,11 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NavigationProps } from '../navigation.types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { api, ChatItem } from '../lib/api';
+import { supabase } from '../lib/supabase';
 
 // Import icons
 const chatIcon = require('../assets/chat-icon.png');
 const archiveIcon = require('../assets/archive-icon.png');
-
-interface ChatItem {
-  id: string;
-  question: string;
-  response: {
-    verse: string;
-    reference: string;
-    relevance: string;
-    explanation: string;
-  };
-  created_at: string;
-  is_archived: boolean;
-}
 
 export default function Home() {
   const navigation = useNavigation<NavigationProps>();
@@ -30,312 +18,185 @@ export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
   const [chats, setChats] = useState<ChatItem[]>([]);
   const [archivedChats, setArchivedChats] = useState<ChatItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [deletingChat, setDeletingChat] = useState<string | null>(null);
-  const [activeCard, setActiveCard] = useState<string | null>(null);
-  const [snackbarVisible, setSnackbarVisible] = useState(false);
-  const [snackbarMessage, setSnackbarMessage] = useState('');
-  const [snackbarType, setSnackbarType] = useState<'success' | 'error'>('success');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const searchWidth = useRef(new Animated.Value(40)).current;
-  const actionButtonsWidth = useRef(new Animated.Value(0)).current;
-
-  const toggleSearch = () => {
-    Animated.timing(searchWidth, {
-      toValue: searchWidth._value === 40 ? 200 : 40,
-      duration: 300,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  const toggleCardActions = (chatId: string | null) => {
-    setActiveCard(chatId);
-    Animated.timing(actionButtonsWidth, {
-      toValue: chatId ? 96 : 0,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  // Load chats when the screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
-      loadChats();
+      const checkAuth = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          navigation.navigate('Login');
+          return;
+        }
+        loadChats();
+      };
+
+      checkAuth();
     }, [])
   );
-
-  const handleLogout = async () => {
-    try {
-      await api.signOut();
-      navigation.navigate('Login');
-    } catch (error) {
-      console.error('Error logging out:', error);
-    }
-  };
 
   const loadChats = async () => {
     try {
       setLoading(true);
+      setError(null);
       const { chats: newChats, archivedChats: newArchivedChats } = await api.loadChats();
       setChats(newChats);
       setArchivedChats(newArchivedChats);
-    } catch (error) {
-      console.error('Error in loadChats:', error);
-      if ((error as Error).message.includes('No user found')) {
+    } catch (err: any) {
+      console.error('Error in loadChats:', err);
+      if (err.message === 'No user found') {
         navigation.navigate('Login');
+      } else {
+        setError(err.message || 'Failed to load chats');
       }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleArchiveToggle = async (chatId: string, currentlyArchived: boolean) => {
+  const handleArchive = async (chatId: string, currentlyArchived: boolean) => {
     try {
+      setError(null);
       await api.archiveChat(chatId, currentlyArchived);
-      setSnackbarType('success');
-      setSnackbarMessage(`Chat ${currentlyArchived ? 'unarchived' : 'archived'} successfully`);
-      setSnackbarVisible(true);
-      loadChats();
-    } catch (error) {
-      console.error('Error in handleArchiveToggle:', error);
-      setSnackbarType('error');
-      setSnackbarMessage((error as Error).message);
-      setSnackbarVisible(true);
+      await loadChats(); // Reload chats after archiving
+    } catch (err: any) {
+      console.error('Error archiving chat:', err);
+      setError(err.message || 'Failed to archive chat');
     }
   };
 
   const handleDelete = async (chatId: string) => {
     try {
-      setDeletingChat(chatId);
+      setError(null);
       await api.deleteChat(chatId);
-      setSnackbarType('success');
-      setSnackbarMessage('Chat deleted successfully');
-      setSnackbarVisible(true);
-      loadChats();
-    } catch (error) {
-      console.error('Error in handleDelete:', error);
-      setSnackbarType('error');
-      setSnackbarMessage((error as Error).message);
-      setSnackbarVisible(true);
-    } finally {
-      setDeletingChat(null);
+      await loadChats(); // Reload chats after deleting
+    } catch (err: any) {
+      console.error('Error deleting chat:', err);
+      setError(err.message || 'Failed to delete chat');
     }
   };
 
-  const filteredChats = (showHistory ? chats : archivedChats)
-    .filter(chat => chat.question.toLowerCase().includes(searchQuery.toLowerCase()))
-    .slice(0, showHistory ? 10 : 20);
-
-  const renderEmptyState = () => {
-    const totalCount = showHistory ? chats.length : archivedChats.length;
-    const shownCount = filteredChats.length;
-    const hasMore = totalCount > shownCount;
-    
-    if (loading) {
-      return <Text style={styles.emptyText}>Loading your conversations...</Text>;
+  const handleSignOut = async () => {
+    try {
+      await api.signOut();
+      navigation.navigate('Login');
+    } catch (err: any) {
+      console.error('Error signing out:', err);
+      setError(err.message || 'Failed to sign out');
     }
-    
-    if (searchQuery && filteredChats.length === 0) {
-      return <Text style={styles.emptyText}>No matches found for "{searchQuery}"</Text>;
-    }
-    
-    if (filteredChats.length === 0) {
-      return (
-        <Text style={styles.emptyText}>
-          {showHistory ? "No conversations yet" : "No archived conversations"}
-        </Text>
-      );
-    }
-
-    if (hasMore) {
-      return (
-        <Text style={styles.limitText}>
-          Showing {shownCount} of {totalCount} {showHistory ? "conversations" : "archived items"}
-        </Text>
-      );
-    }
-
-    return null;
   };
 
-  const renderChatItem = (chat: ChatItem) => {
-    const isActive = activeCard === chat.id;
-    
-    return (
-      <TouchableOpacity
-        key={chat.id}
-        style={styles.cardContainer}
-        onPress={() => {
-          if (isActive) {
-            toggleCardActions(null);
-          } else {
-            navigation.navigate('Response', {
-              question: chat.question,
-              verse: chat.response.verse,
-              reference: chat.response.reference,
-              relevance: chat.response.relevance,
-              explanation: chat.response.explanation
-            });
-          }
-        }}
-        onLongPress={() => toggleCardActions(chat.id)}
-        delayLongPress={200}
-      >
-        <View style={styles.cardWrapper}>
-          <Card style={[styles.historyCard, isActive && styles.activeCard]}>
-            <View style={styles.historyCardHeader}>
-              <View style={styles.questionContainer}>
-                <Text style={styles.historyCardTitle} numberOfLines={2}>{chat.question}</Text>
-                <Text style={styles.historyCardTime}>
-                  {new Date(chat.created_at).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                  })}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.verseContainer}>
-              <Text style={styles.verseText} numberOfLines={2}>{chat.response.verse}</Text>
-              <Text style={styles.referenceText}>{chat.response.reference}</Text>
-            </View>
-          </Card>
-          <Animated.View style={[
-            styles.actionButtons,
-            { width: actionButtonsWidth }
-          ]}>
-            <IconButton
-              icon={chat.is_archived ? 'archive-remove' : 'archive'}
-              size={24}
-              onPress={() => {
-                handleArchiveToggle(chat.id, chat.is_archived);
-                toggleCardActions(null);
-              }}
-              style={styles.actionButton}
-            />
-            <IconButton
-              icon="delete"
-              size={24}
-              loading={deletingChat === chat.id}
-              disabled={deletingChat === chat.id}
-              onPress={() => {
-                handleDelete(chat.id);
-                toggleCardActions(null);
-              }}
-              iconColor="#FF6B6B"
-              style={styles.actionButton}
-            />
-          </Animated.View>
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  const filteredChats = (showHistory ? chats : archivedChats).filter(chat =>
+    chat.question.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.content}>
-          <Image 
-            source={require('../assets/logo-full.png')} 
-            style={styles.logo} 
-            resizeMode="contain"
-          />
+      <View style={styles.header}>
+        <Text style={styles.title}>His Word</Text>
+        <IconButton
+          icon="logout"
+          iconColor="#FFFFFF"
+          size={24}
+          onPress={handleSignOut}
+        />
+      </View>
 
-          <View style={styles.titleContainer}>
-            <Text style={styles.mainTitle}>
-              Seek Your Verse, Find Your{' '}
-              <Text style={[styles.mainTitle, styles.highlight]}>
-                Path
-              </Text>
-            </Text>
-          </View>
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search conversations..."
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+      </View>
 
-          <TouchableOpacity 
-            style={styles.newTopicButton} 
-            onPress={() => navigation.navigate('Question')}
-          >
-            <Text style={styles.newTopicText}>+ New Topic</Text>
-          </TouchableOpacity>
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tab, showHistory && styles.activeTab]}
+          onPress={() => setShowHistory(true)}
+        >
+          <Image source={chatIcon} style={styles.tabIcon} />
+          <Text style={[styles.tabText, showHistory && styles.activeTabText]}>History</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, !showHistory && styles.activeTab]}
+          onPress={() => setShowHistory(false)}
+        >
+          <Image source={archiveIcon} style={styles.tabIcon} />
+          <Text style={[styles.tabText, !showHistory && styles.activeTabText]}>Archive</Text>
+        </TouchableOpacity>
+      </View>
 
-          <View style={styles.historySection}>
-            <View style={styles.historyHeader}>
-              <View style={styles.toggleContainer}>
-                <TouchableOpacity
-                  style={[
-                    styles.toggleButton,
-                    showHistory && styles.activeToggle
-                  ]}
-                  onPress={() => setShowHistory(true)}
-                >
-                  <Text style={[
-                    styles.toggleText,
-                    showHistory && styles.activeToggleText
-                  ]}>Chats</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.toggleButton,
-                    !showHistory && styles.activeToggle
-                  ]}
-                  onPress={() => setShowHistory(false)}
-                >
-                  <Text style={[
-                    styles.toggleText,
-                    !showHistory && styles.activeToggleText
-                  ]}>Archived</Text>
-                </TouchableOpacity>
-              </View>
-              <Animated.View style={[styles.searchContainer, {
-                width: searchWidth,
-                flexDirection: 'row',
-                alignItems: 'center',
-              }]}>
-                <TouchableOpacity onPress={toggleSearch}>
-                  <MaterialCommunityIcons name="magnify" size={24} color="#fff" />
-                </TouchableOpacity>
-                <Animated.View style={{ flex: 1, overflow: 'hidden', width: searchWidth }}>
-                  <TextInput
-                    style={styles.searchInput}
-                    placeholder="Search history..."
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    placeholderTextColor="#666"
-                  />
-                </Animated.View>
-              </Animated.View>
-            </View>
-
-            {loading ? (
-              <Text style={styles.loadingText}>Loading your conversations...</Text>
-            ) : filteredChats.length === 0 ? (
-              <Text style={styles.emptyText}>
-                {showHistory 
-                  ? "No chat history yet. Start a new topic!" 
-                  : "No archived chats yet."}
-              </Text>
-            ) : (
-              <View style={styles.historyCards}>
-                {filteredChats.map(renderChatItem)}
-                {renderEmptyState()}
-              </View>
-            )}
-          </View>
-
-          <Button mode="outlined" onPress={handleLogout} style={styles.logoutButton}>
-            Logout
-          </Button>
-        </View>
+      <ScrollView style={styles.chatList}>
+        {loading ? (
+          <Text style={styles.loadingText}>Loading...</Text>
+        ) : filteredChats.length === 0 ? (
+          <Text style={styles.emptyText}>
+            {searchQuery
+              ? 'No conversations found'
+              : showHistory
+              ? 'No conversations yet'
+              : 'No archived conversations'}
+          </Text>
+        ) : (
+          filteredChats.map((chat) => (
+            <Card key={chat.id} style={styles.chatCard}>
+              <Card.Content>
+                <Text style={styles.questionText}>{chat.question}</Text>
+                <Text style={styles.verseText}>
+                  {chat.response.verse} - {chat.response.reference}
+                </Text>
+              </Card.Content>
+              <Card.Actions style={styles.cardActions}>
+                <IconButton
+                  icon={showHistory ? "archive" : "archive-off"}
+                  iconColor="#666"
+                  size={20}
+                  onPress={() => handleArchive(chat.id, chat.is_archived)}
+                />
+                <IconButton
+                  icon="delete"
+                  iconColor="#666"
+                  size={20}
+                  onPress={() => handleDelete(chat.id)}
+                />
+                <IconButton
+                  icon="chevron-right"
+                  iconColor="#666"
+                  size={20}
+                  onPress={() => navigation.navigate('Response', {
+                    question: chat.question,
+                    response: chat.response
+                  })}
+                />
+              </Card.Actions>
+            </Card>
+          ))
+        )}
       </ScrollView>
+
+      <View style={styles.footer}>
+        <Button
+          mode="contained"
+          onPress={() => navigation.navigate('Question')}
+          style={styles.askButton}
+          labelStyle={styles.askButtonText}
+        >
+          Ask a Question
+        </Button>
+      </View>
+
       <Snackbar
-        visible={snackbarVisible}
-        onDismiss={() => setSnackbarVisible(false)}
-        duration={2000}
-        style={[
-          styles.snackbar,
-          snackbarType === 'success' ? styles.successSnackbar : styles.errorSnackbar
-        ]}
+        visible={!!error}
+        onDismiss={() => setError(null)}
+        action={{
+          label: 'Dismiss',
+          onPress: () => setError(null),
+        }}
       >
-        {snackbarMessage}
+        {error}
       </Snackbar>
     </SafeAreaView>
   );
@@ -346,197 +207,92 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#000000',
   },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
-  logo: {
-    width: '100%',
-    height: 159,
-    marginTop: 20,
-    marginBottom: 30,
-  },
-  titleContainer: {
-    marginBottom: 32,
-  },
-  mainTitle: {
-    fontFamily: 'SF Pro Display',
-    fontSize: 24,
-    color: '#FFFFFF',
-    textAlign: 'center',
-    lineHeight: 32,
-    fontWeight: '400',
-  },
-  highlight: {
-    color: '#FFD9D0',
-  },
-  newTopicButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 40,
-    alignItems: 'center',
-  },
-  newTopicText: {
-    fontFamily: 'SF Pro Display',
-    fontSize: 16,
-    color: '#FFD9D0',
-    fontWeight: '400',
-  },
-  historySection: {
-    flex: 1,
-  },
-  historyHeader: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingHorizontal: 16,
+    padding: 16,
+    backgroundColor: '#000000',
   },
-  toggleContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 25,
-    padding: 4,
-  },
-  toggleButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-  },
-  activeToggle: {
-    backgroundColor: '#333',
-  },
-  toggleText: {
-    color: '#666',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  activeToggleText: {
-    color: '#fff',
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
   searchContainer: {
-    backgroundColor: '#1a1a1a',
-    borderRadius: 25,
-    padding: 8,
-    overflow: 'hidden',
+    padding: 16,
+    backgroundColor: '#000000',
   },
   searchInput: {
-    backgroundColor: 'transparent',
-    paddingHorizontal: 10,
-    color: '#fff',
-    height: 40,
+    backgroundColor: '#1A1A1A',
   },
-  cardContainer: {
-    marginHorizontal: 16,
-    marginVertical: 8,
-  },
-  cardWrapper: {
+  tabContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-  },
-  historyCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 16,
-    elevation: 4,
-    overflow: 'hidden',
-    flex: 1,
-  },
-  activeCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    borderColor: '#FFD9D0',
-    borderWidth: 1,
-  },
-  actionButtons: {
-    overflow: 'hidden',
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  actionButton: {
-    margin: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: 12,
-  },
-  historyCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
     padding: 16,
-    paddingBottom: 8,
+    backgroundColor: '#000000',
   },
-  questionContainer: {
+  tab: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 8,
+    borderRadius: 8,
+    marginHorizontal: 4,
+  },
+  activeTab: {
+    backgroundColor: '#1A1A1A',
+  },
+  tabIcon: {
+    width: 24,
+    height: 24,
     marginRight: 8,
   },
-  historyCardTitle: {
+  tabText: {
+    color: '#666666',
+    fontSize: 16,
+  },
+  activeTabText: {
+    color: '#FFFFFF',
+  },
+  chatList: {
+    flex: 1,
+    padding: 16,
+  },
+  chatCard: {
+    marginBottom: 16,
+    backgroundColor: '#1A1A1A',
+  },
+  questionText: {
     fontSize: 16,
     color: '#FFFFFF',
-    fontWeight: '500',
-    marginBottom: 4,
-    lineHeight: 22,
-  },
-  historyCardTime: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.5)',
-    marginBottom: 4,
-  },
-  verseContainer: {
-    padding: 16,
-    paddingTop: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    marginBottom: 8,
   },
   verseText: {
     fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.9)',
-    lineHeight: 20,
-    marginBottom: 4,
-    fontStyle: 'italic',
+    color: '#666666',
   },
-  referenceText: {
-    fontSize: 12,
-    color: '#FFD9D0',
-    fontWeight: '500',
+  cardActions: {
+    justifyContent: 'flex-end',
   },
-  historyCards: {
-    marginTop: 20,
+  footer: {
+    padding: 16,
+    backgroundColor: '#000000',
+  },
+  askButton: {
+    backgroundColor: '#007AFF',
+  },
+  askButtonText: {
+    fontSize: 16,
   },
   loadingText: {
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginTop: 20,
+  },
+  emptyText: {
     color: '#666666',
     textAlign: 'center',
     marginTop: 20,
-    fontSize: 16,
-  },
-  emptyText: {
-    color: 'rgba(255, 255, 255, 0.5)',
-    textAlign: 'center',
-    marginTop: 20,
-    fontSize: 14,
-  },
-  limitText: {
-    color: 'rgba(255, 255, 255, 0.5)',
-    textAlign: 'center',
-    marginTop: 16,
-    fontSize: 12,
-    fontStyle: 'italic',
-  },
-  logoutButton: {
-    marginTop: 20,
-    borderColor: '#FFD9D0',
-  },
-  snackbar: {
-    position: 'absolute',
-    bottom: 0,
-    margin: 16,
-    borderRadius: 8,
-  },
-  successSnackbar: {
-    backgroundColor: '#4CAF50',
-  },
-  errorSnackbar: {
-    backgroundColor: '#F44336',
   },
 });

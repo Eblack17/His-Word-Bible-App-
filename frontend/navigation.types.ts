@@ -7,11 +7,13 @@ export type RootStackParamList = {
   Home: undefined;
   Question: { chatId?: string } | undefined;
   Response: {
-    verse: string;
-    reference: string;
-    relevance: string;
-    explanation: string;
     question: string;
+    response: {
+      verse: string;
+      reference: string;
+      relevance: string;
+      explanation: string;
+    };
   };
 };
 
